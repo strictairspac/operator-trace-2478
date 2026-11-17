@@ -1,4 +1,5 @@
-from src.config.database import Base,engine,Session
+from src.config.database import Session
+from src.config.schema import ensure_schema
 from src.models.identity import User,Audit
 from src.models.dataset import Dataset
 from src.models.plan import Plan
@@ -6,7 +7,7 @@ from src.models.trace import Trace
 from src.utils.security import hash_password
 DEFAULT_STEPS=[{'op':'scan','source':'readings'},{'op':'filter','field':'value','compare':'gte','value':50},{'op':'hash_join','right':'sensors','left_key':'sensor_id','right_key':'sensor_id'},{'op':'group','keys':['zone'],'measure':'value','aggregate':'avg'}]
 def seed():
- Base.metadata.create_all(engine)
+ ensure_schema()
  with Session() as s:
   for role in ('admin','operator','viewer'):
    if not s.query(User).filter_by(email=role+'@operator.local').first():s.add(User(email=role+'@operator.local',role=role,password=hash_password('Trace2026!')))

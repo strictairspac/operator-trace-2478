@@ -6,6 +6,11 @@ x-app: &app
     REDIS_URL: redis://redis:6379/0
     JWT_SECRET: ${JWT_SECRET:-operator-trace-local-demo-secret-change-before-use}
     SEED_DEMO: ${SEED_DEMO:-true}
+    TRACE_LEASE_SECONDS: ${TRACE_LEASE_SECONDS:-30}
+    TRACE_HEARTBEAT_SECONDS: ${TRACE_HEARTBEAT_SECONDS:-10}
+    TRACE_SWEEP_SECONDS: ${TRACE_SWEEP_SECONDS:-5}
+    TRACE_REDELIVER_SECONDS: ${TRACE_REDELIVER_SECONDS:-30}
+    WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
   volumes:
     - artifacts:/artifacts
   depends_on:

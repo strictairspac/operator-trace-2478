@@ -38,13 +38,15 @@ seed三账号、三个数据集（240行日班、空数据、重复右键）、�
 ## 算法与边界
 这是教学内核模型，不是PostgreSQL执行器剖面。PostgreSQL真实保存业务元数据；Python worker真实计算表扫描、数值/相等筛选、构建哈希桶与内连接、Decimal累积分组。右表重复键保留倍数，空集合输出空集合。分组avg/sum保留6位小数，输出按规范JSON排序，SHA-256使用排序key紧凑JSON UTF-8；相同输入和计划结果摘要相同。每步输出输入/输出行数、耗时、明细、前5行与checksum。scan 的 input_rows=0 表示从源读取，detail.scanned_rows为扫描源行数；row_visits是扫描/过滤/哈希构建与探测/聚合各步逻辑行访问总和，不代表物理I/O。
 
-DSL最多6步，首步仅scan readings；filter eq/gte/lte；hash_join仅readings.sensor_id=sensors.sensor_id且最多一次；group仅value的count/sum/avg。禁止eval、任意代码和任意SQL。最多100传感器、2000采样、10000连接输出行；超限失败，不保存部分结果。JSON非法、字段错误、非法算子、孤立引用、重复名有可恢复错误。任务使用Redis简单单消费者，进程崩溃后的running任务不自动重试，保留供人工复查后新建任务。
+DSL最多6步，首步仅scan readings；filter eq/gte/lte；hash_join仅readings.sensor_id=sensors.sensor_id且最多一次；group仅value的count/sum/avg。禁止eval、任意代码和任意SQL。最多100传感器、2000采样、10000连接输出行；超限失败，不保存部分结果。JSON非法、字段错误、非法算子、孤立引用、重复名有可恢复错误。
+
+执行可靠性：受理即写库并把数据集与计划冻结为快照，Redis只是唤醒通道，不是真值来源。队列短暂不可用时任务保持`pending`（页面「等待补送」），恢复后由API/worker的清扫循环自动补送，不再把已受理任务判失败。worker领取时用单条条件更新完成`pending/queued→running`并递增`attempt`，执行期间心跳续租；租约默认30秒过期，健康的长计算持续续租不会被回收。执行者停机、崩溃或失联后，租约过期或停机钩子会交还原记录（同一id、同一快照）排队重新领取，一分钟内可被接管；已完成任务不会被重复投递重算，结果与`completed`标志在同一条带围栏（owner+attempt）的语句中落库，复活后的旧执行者写回、心跳或失败标记都会被拒绝。业务错误（超限、非法数据）直接终态`failed`且不重试。多个worker槽位可并发执行不同任务。状态页区分`pending`等待补送、`queued`已入队、`running`执行中、接管中的`running`、`completed`完成与`failed`业务失败，并显示接管次数与当前领取次序。
 
 ## 技术、目录与本地开发
 Python3.11 / FastAPI / SQLAlchemy / psycopg / Redis / PostgreSQL16；原生 HTML/CSS/JS ES modules / nginx1.27。五服务frontend/backend/worker/db/redis均健康探针，命名卷数据库/Redis/共享产物。DB/Redis健康后启动backend，backend健康后启worker/frontend。
 
 backend/src按models/schemas/services/controllers/routes/middlewares/config/constants/utils分层；backend/scripts/seed_demo.py；backend/migrations元数据建表版本。frontend/src按api/stores/pages/components/common/hooks/router/types/constants/utils分层。三共享组件table/status/feedback，两hooks forms/poll。角色/状态/算子枚举在backend/src/constants/enums.py与frontend/src/constants/enums.js；权限/auth、worker状态、operator校验、前端状态展示使用相同枚举值。请求追踪和全局错误中间件、JWT授权、业务审计贯穿模块。
 
-石墨黄铜工程蓝图视觉，双字体Noto Sans SC/Space Mono来自Google Fonts，离线回退；响应桌面/平板/手机。环境变量见.env.example：COMPOSE_PROJECT_NAME、三端口、JWT_SECRET、SEED_DEMO。DATABASE_URL/REDIS_URL由Compose提供。SEED_DEMO启动失败只记日志。
+石墨黄铜工程蓝图视觉，双字体Noto Sans SC/Space Mono来自Google Fonts，离线回退；响应桌面/平板/手机。环境变量见.env.example：COMPOSE_PROJECT_NAME、三端口、JWT_SECRET、SEED_DEMO，以及可选的TRACE_LEASE_SECONDS、TRACE_HEARTBEAT_SECONDS、TRACE_SWEEP_SECONDS、TRACE_REDELIVER_SECONDS、WORKER_CONCURRENCY。DATABASE_URL/REDIS_URL由Compose提供。SEED_DEMO启动失败只记日志。
 
 本地后端：pip install -r backend/requirements.txt，设置DATABASE_URL、REDIS_URL、JWT_SECRET，在backend运行uvicorn src.main:app --reload；前端需代理/api，不支持file://。截图、测试、日志和报告在批次根test-artifacts/gb-4105，源码无测试产物。License MIT。
